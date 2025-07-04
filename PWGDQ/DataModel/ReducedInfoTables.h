@@ -16,6 +16,7 @@
 #define PWGDQ_DATAMODEL_REDUCEDINFOTABLES_H_
 
 #include "PWGHF/Utils/utilsPid.h"
+#include "PWGJE/DataModel/EMCALClusters.h"
 
 #include "Common/DataModel/Centrality.h"
 #include "Common/DataModel/EventSelection.h"
@@ -27,8 +28,6 @@
 #include "Framework/AnalysisDataModel.h"
 #include "MathUtils/Utils.h"
 
-#include "PWGHF/Utils/utilsPid.h"
-#include "PWGJE/DataModel/EMCALClusters.h"
 #include <cmath>
 #include <vector>
 
@@ -286,7 +285,7 @@ using ReducedZdcExtra = ReducedZdcsExtra::iterator;
 namespace reducedemcal
 {
 DECLARE_SOA_INDEX_COLUMN(ReducedEvent, reducedevent);
-DECLARE_SOA_BITMAP_COLUMN(FilteringFlags, filteringFlags, 64); //!
+DECLARE_SOA_BITMAP_COLUMN(FilteringFlags, filteringFlags, 64);         //!
 DECLARE_SOA_INDEX_COLUMN(Collision, collision);                        //! collisionID used as index for matched clusters
 DECLARE_SOA_INDEX_COLUMN(BC, bc);                                      //! bunch crossing ID used as index for ambiguous clusters
 DECLARE_SOA_COLUMN(ID, id, int);                                       //! cluster ID identifying cluster in event
@@ -372,8 +371,8 @@ DECLARE_SOA_TABLE(ReducedTracks, "AOD", "REDUCEDTRACK", //!
 // Track-EMCal association table (separate from ReducedTracks to avoid breaking existing code)
 DECLARE_SOA_TABLE(ReducedTracksEMCalAssoc, "AOD", "RTEMCALASSOC", //!
                   reducedtrack::ReducedEventId,
-                  o2::soa::Index<>,  // Track index
-                  reducedtrack::ReducedEMCalId);  // EMCal cluster index
+                  o2::soa::Index<>,              // Track index
+                  reducedtrack::ReducedEMCalId); // EMCal cluster index
 
 // barrel track information
 DECLARE_SOA_TABLE(ReducedTracksBarrel, "AOD", "RTBARREL", //!
