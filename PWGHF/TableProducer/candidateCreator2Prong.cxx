@@ -89,11 +89,11 @@ using namespace o2::aod::pid_tpc_tof_utils;
 /// Reconstruction of heavy-flavour 2-prong decay candidates
 struct HfCandidateCreator2Prong {
   Produces<aod::HfCand2ProngBase> rowCandidateBase;
-  Produces<aod::HfProng0PidPi> rowProng0PidPi;
-  Produces<aod::HfProng0PidKa> rowProng0PidKa;
-  Produces<aod::HfProng1PidPi> rowProng1PidPi;
-  Produces<aod::HfProng1PidKa> rowProng1PidKa;
   Produces<aod::HfCand2ProngKF> rowCandidateKF;
+  Produces<aod::HfCand2Prong0PidPi> rowProng0PidPi;
+  Produces<aod::HfCand2Prong0PidKa> rowProng0PidKa;
+  Produces<aod::HfCand2Prong1PidPi> rowProng1PidPi;
+  Produces<aod::HfCand2Prong1PidKa> rowProng1PidKa;
 
   // vertexing
   Configurable<bool> constrainKfToPv{"constrainKfToPv", true, "constraint KFParticle to PV"};
@@ -121,8 +121,12 @@ struct HfCandidateCreator2Prong {
   float toMicrometers = 10000.; // from cm to µm
   double massPi{0.};
   double massK{0.};
+  double massE{0.};
+  double massMu{0.};
   double massPiK{0.};
   double massKPi{0.};
+  double massEE{0.};
+  double massMuMu{0.};
   double bz{0.};
 
   std::shared_ptr<TH1> hCandidates;
@@ -170,6 +174,8 @@ struct HfCandidateCreator2Prong {
 
     // histograms
     registry.add("hMass2", "2-prong candidates;inv. mass (#pi K) (GeV/#it{c}^{2});entries", {HistType::kTH1F, {axisMass}});
+    registry.add("hMassEE", "2-prong candidates;inv. mass (e e) (GeV/#it{c}^{2});entries", {HistType::kTH1F, {axisMass}});
+    registry.add("hMassMuMu", "2-prong candidates;inv. mass (#mu #mu) (GeV/#it{c}^{2});entries", {HistType::kTH1F, {axisMass}});
     registry.add("hCovPVXX", "2-prong candidates;XX element of cov. matrix of prim. vtx. position (cm^{2});entries", {HistType::kTH1F, {{100, 0., 1.e-4}}});
     registry.add("hCovSVXX", "2-prong candidates;XX element of cov. matrix of sec. vtx. position (cm^{2});entries", {HistType::kTH1F, {{100, 0., 0.2}}});
     registry.add("hCovPVYY", "2-prong candidates;YY element of cov. matrix of prim. vtx. position (cm^{2});entries", {HistType::kTH1F, {{100, 0., 1.e-4}}});
@@ -188,6 +194,8 @@ struct HfCandidateCreator2Prong {
 
     massPi = MassPiPlus;
     massK = MassKPlus;
+    massE = MassElectron;
+    massMu = MassMuon;
 
     if (std::accumulate(doprocessDF.begin(), doprocessDF.end(), 0) == 1) {
       registry.fill(HIST("hVertexerType"), aod::hf_cand::VertexerType::DCAFitter);
@@ -226,7 +234,7 @@ struct HfCandidateCreator2Prong {
       /// reject candidates not satisfying the event selections
       auto collision = rowTrackIndexProng2.template collision_as<Coll>();
       float centrality{-1.f};
-      uint32_t rejectionMask{0};
+      o2::hf_evsel::HfCollisionRejectionMask rejectionMask{};
       if constexpr (applyUpcSel) {
         rejectionMask = hfEvSel.getHfCollisionRejectionMaskWithUpc<true, centEstimator, BCsType>(collision, centrality, ccdb, registry, bcs);
       } else {
@@ -332,7 +340,7 @@ struct HfCandidateCreator2Prong {
       if (indexCollision == track1.collisionId() && track1.isPVContributor()) {
         SETBIT(bitmapProngsContributorsPV, 1);
       }
-      uint8_t nProngsContributorsPV = hf_trkcandsel::countOnesInBinary(bitmapProngsContributorsPV);
+      const auto nProngsContributorsPV = hf_trkcandsel::countOnesInBinary(bitmapProngsContributorsPV);
 
       // fill candidate table rows
       rowCandidateBase(indexCollision,
@@ -361,8 +369,12 @@ struct HfCandidateCreator2Prong {
         auto arrayMomenta = std::array{pvec0, pvec1};
         massPiK = RecoDecay::m(arrayMomenta, std::array{massPi, massK});
         massKPi = RecoDecay::m(arrayMomenta, std::array{massK, massPi});
+        massEE = RecoDecay::m(arrayMomenta, std::array{massE, massE});
+        massMuMu = RecoDecay::m(arrayMomenta, std::array{massMu, massMu});
         registry.fill(HIST("hMass2"), massPiK);
         registry.fill(HIST("hMass2"), massKPi);
+        registry.fill(HIST("hMassEE"), massEE);
+        registry.fill(HIST("hMassMuMu"), massMuMu);
       }
     }
   }
@@ -379,7 +391,7 @@ struct HfCandidateCreator2Prong {
       /// reject candidates in collisions not satisfying the event selections
       auto collision = rowTrackIndexProng2.template collision_as<Coll>();
       float centrality{-1.f};
-      uint32_t rejectionMask{0};
+      o2::hf_evsel::HfCollisionRejectionMask rejectionMask{};
       if constexpr (applyUpcSel) {
         rejectionMask = hfEvSel.getHfCollisionRejectionMaskWithUpc<true, centEstimator, BCsType>(collision, centrality, ccdb, registry, bcs);
       } else {
@@ -489,7 +501,7 @@ struct HfCandidateCreator2Prong {
       if (indexCollision == track1.collisionId() && track1.isPVContributor()) {
         SETBIT(bitmapProngsContributorsPV, 1);
       }
-      uint8_t nProngsContributorsPV = hf_trkcandsel::countOnesInBinary(bitmapProngsContributorsPV);
+      const auto nProngsContributorsPV = hf_trkcandsel::countOnesInBinary(bitmapProngsContributorsPV);
 
       // fill candidate table rows
       rowCandidateBase(indexCollision,
@@ -738,7 +750,7 @@ struct HfCandidateCreator2Prong {
 
       /// bitmask with event. selection info
       float centrality{-1.f};
-      float occupancy = getOccupancyColl(collision, OccupancyEstimator::Its);
+      const auto occupancy = o2::hf_occupancy::getOccupancyColl(collision, hfEvSel.occEstimator);
       const auto rejectionMask = hfEvSel.getHfCollisionRejectionMask<true, CentralityEstimator::None, aod::BCsWithTimestamps>(collision, centrality, ccdb, registry);
 
       /// monitor the satisfied event selections
@@ -756,7 +768,7 @@ struct HfCandidateCreator2Prong {
 
       /// bitmask with event. selection info
       float centrality{-1.f};
-      float occupancy = getOccupancyColl(collision, OccupancyEstimator::Its);
+      const auto occupancy = o2::hf_occupancy::getOccupancyColl(collision, hfEvSel.occEstimator);
       const auto rejectionMask = hfEvSel.getHfCollisionRejectionMask<true, CentralityEstimator::FT0C, aod::BCsWithTimestamps>(collision, centrality, ccdb, registry);
 
       /// monitor the satisfied event selections
@@ -774,7 +786,7 @@ struct HfCandidateCreator2Prong {
 
       /// bitmask with event. selection info
       float centrality{-1.f};
-      float occupancy = getOccupancyColl(collision, OccupancyEstimator::Its);
+      const auto occupancy = o2::hf_occupancy::getOccupancyColl(collision, hfEvSel.occEstimator);
       const auto rejectionMask = hfEvSel.getHfCollisionRejectionMask<true, CentralityEstimator::FT0M, aod::BCsWithTimestamps>(collision, centrality, ccdb, registry);
 
       /// monitor the satisfied event selections
@@ -797,7 +809,7 @@ struct HfCandidateCreator2Prong {
 
       /// bitmask with event. selection info
       float centrality{-1.f};
-      float occupancy = getOccupancyColl(collision, OccupancyEstimator::Its);
+      const auto occupancy = o2::hf_occupancy::getOccupancyColl(collision, hfEvSel.occEstimator);
       const auto rejectionMask = hfEvSel.getHfCollisionRejectionMaskWithUpc<true, CentralityEstimator::None, aod::BcFullInfos>(collision, centrality, ccdb, registry, bcs);
 
       /// monitor the satisfied event selections
@@ -1016,7 +1028,7 @@ struct HfCandidateCreator2ProngExpressions {
       const auto mcParticlesPerMcColl = mcParticles.sliceBy(mcParticlesPerMcCollision, mcCollision.globalIndex());
       // Slice the collisions table to get the collision info for the current MC collision
       float centrality{-1.f};
-      uint32_t rejectionMask{0u};
+      o2::hf_evsel::HfCollisionRejectionMask rejectionMask{};
       int nSplitColl = 0;
       if constexpr (centEstimator == CentralityEstimator::FT0C) {
         const auto collSlice = collInfos.sliceBy(colPerMcCollisionFT0C, mcCollision.globalIndex());

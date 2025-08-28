@@ -90,7 +90,7 @@ struct HfCandidateSelectorDstarToD0Pi {
 
   // QA switch
   Configurable<bool> activateQA{"activateQA", false, "Flag to enable QA histogram"};
-  // ML inference
+  // ML inference D*
   Configurable<bool> applyMl{"applyMl", false, "Flag to apply ML selections"};
   Configurable<std::vector<double>> binsPtMl{"binsPtMl", std::vector<double>{hf_cuts_ml::vecBinsPt}, "pT bin limits for ML application"};
   Configurable<std::vector<int>> cutDirMl{"cutDirMl", std::vector<int>{hf_cuts_ml::vecCutDir}, "Whether to reject score values greater or smaller than the threshold"};
@@ -105,9 +105,6 @@ struct HfCandidateSelectorDstarToD0Pi {
   Configurable<int64_t> timestampCCDB{"timestampCCDB", -1, "timestamp of the ONNX file for ML model used to query in CCDB"};
   Configurable<bool> loadModelsFromCCDB{"loadModelsFromCCDB", false, "Flag to enable or disable the loading of models from CCDB"};
 
-  // PDG mass for kaon, pion and D0
-  double massD0, massPi, massK;
-
   HfHelper hfHelper;
   o2::analysis::HfMlResponseDstarToD0Pi<float> hfMlResponse;
   std::vector<float> outputMlDstarToD0Pi = {};
@@ -117,7 +114,6 @@ struct HfCandidateSelectorDstarToD0Pi {
   TrackSelectorKa selectorKaon;
 
   using TracksSel = soa::Join<aod::TracksWDcaExtra, aod::TracksPidPi, aod::PidTpcTofFullPi, aod::TracksPidKa, aod::PidTpcTofFullKa>;
-  // using TracksSel = soa::Join<aod::Tracks, aod::TracksPidPi, aod::TracksPidKa>;
   using HfFullDstarCandidate = soa::Join<aod::HfD0FromDstar, aod::HfCandDstarsWPid>;
 
   AxisSpec axisBdtScore{100, 0.f, 1.f};
@@ -128,9 +124,6 @@ struct HfCandidateSelectorDstarToD0Pi {
 
   void init(InitContext&)
   {
-    massPi = MassPiPlus;
-    massK = MassKPlus;
-    massD0 = MassD0;
 
     selectorPion.setRangePtTpc(ptPidTpcMin, ptPidTpcMax);
     selectorPion.setRangeNSigmaTpc(-nSigmaTpcMax, nSigmaTpcMax);
@@ -235,10 +228,6 @@ struct HfCandidateSelectorDstarToD0Pi {
       return false;
     }
 
-    //.............Why is this if condition commented?
-    if (candidate.decayLengthNormalisedD0() * candidate.decayLengthNormalisedD0() < 1.0) {
-      // return false; // add back when getter fixed
-    }
     return true;
   }
 
@@ -296,10 +285,10 @@ struct HfCandidateSelectorDstarToD0Pi {
     if (prongSoftPi.sign() > 0.) { // Selection of D*+
       mInvDstar = candidate.invMassDstar();
       mInvD0 = candidate.invMassD0();
-      if (std::abs(mInvD0 - massD0) > cutsD0->get(binPt, "m")) {
+      if (std::abs(mInvD0 - MassD0) > cutsD0->get(binPt, "m")) {
         return false;
       }
-      if (useTriggerMassCut && !isCandidateInMassRange(mInvD0, massD0, candidate.ptD0(), hfTriggerCuts)) {
+      if (useTriggerMassCut && !isCandidateInMassRange(mInvD0, MassD0, candidate.ptD0(), hfTriggerCuts)) {
         return false;
       }
       // cut on daughter pT
@@ -324,10 +313,10 @@ struct HfCandidateSelectorDstarToD0Pi {
     } else if (prongSoftPi.sign() < 0.) { // Selection of D*-
       mInvAntiDstar = candidate.invMassAntiDstar();
       mInvD0Bar = candidate.invMassD0Bar();
-      if (std::abs(mInvD0Bar - massD0) > cutsD0->get(binPt, "m")) {
+      if (std::abs(mInvD0Bar - MassD0) > cutsD0->get(binPt, "m")) {
         return false;
       }
-      if (useTriggerMassCut && !isCandidateInMassRange(mInvD0Bar, massD0, candidate.ptD0(), hfTriggerCuts)) {
+      if (useTriggerMassCut && !isCandidateInMassRange(mInvD0Bar, MassD0, candidate.ptD0(), hfTriggerCuts)) {
         return false;
       }
       // cut on daughter pT
@@ -352,11 +341,11 @@ struct HfCandidateSelectorDstarToD0Pi {
 
     // in case only sideband candidates have to be stored, additional invariant-mass cut
     if (keepOnlySidebandCandidates && prongSoftPi.sign() > 0.) {
-      if (std::abs((mInvDstar - mInvD0) - massPi) < distanceFromDeltaMassForSidebands) {
+      if (std::abs((mInvDstar - mInvD0) - MassPiPlus) < distanceFromDeltaMassForSidebands) {
         return false;
       }
     } else if (keepOnlySidebandCandidates && prongSoftPi.sign() < 0.) {
-      if (std::abs((mInvAntiDstar - mInvD0Bar) - massPi) < distanceFromDeltaMassForSidebands) {
+      if (std::abs((mInvAntiDstar - mInvD0Bar) - MassPiPlus) < distanceFromDeltaMassForSidebands) {
         return false;
       }
     }
@@ -472,7 +461,6 @@ struct HfCandidateSelectorDstarToD0Pi {
       if (applyMl) {
         // ML selections
         bool isSelectedMlDstar = false;
-
         std::vector<float> inputFeatures = hfMlResponse.getInputFeatures(candDstar);
         isSelectedMlDstar = hfMlResponse.isSelectedMl(inputFeatures, ptCand, outputMlDstarToD0Pi);
 
