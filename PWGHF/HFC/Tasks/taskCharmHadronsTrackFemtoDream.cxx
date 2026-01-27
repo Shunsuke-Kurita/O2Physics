@@ -62,7 +62,10 @@ using namespace o2::constants::physics;
 
 inline o2::framework::expressions::Node coshEta(o2::framework::expressions::Node&& eta)
 {
-  return (nexp(std::move(eta)) + nexp(0.0f - std::move(eta))) * 0.5f;
+  auto e1 = std::move(eta);
+  auto e2 = e1;
+
+  return (nexp(std::move(e1)) + nexp(std::move(e2) * (-1.0f))) * 0.5f;
 }
 
 struct HfTaskCharmHadronsTrackFemtoDream {
@@ -75,7 +78,8 @@ struct HfTaskCharmHadronsTrackFemtoDream {
   enum PairSign {
     PairNotDefined = 0,
     LikeSignPair = 1,
-    UnLikeSignPair = 2
+    UnLikeSignPair = 2,
+    ReflectedPair = 3
   };
   // decay channels
   enum DecayChannel { DplusToPiKPi = 0,
@@ -475,7 +479,7 @@ struct HfTaskCharmHadronsTrackFemtoDream {
         }
       }
 
-      if constexpr (Channel == DecayChannel::DstarToD0Pi) {
+      if constexpr (Channel == DecayChannel::LcToPKPi || Channel == DecayChannel::DplusToPiKPi) {
         if (p1.trackId() == p2.prong0Id() || p1.trackId() == p2.prong1Id() || p1.trackId() == p2.prong2Id())
           continue;
         if (useCPR.value) {
@@ -529,9 +533,12 @@ struct HfTaskCharmHadronsTrackFemtoDream {
       int pairSign = 0;
       if (chargeTrack == p2.charge()) {
         pairSign = LikeSignPair;
-      } else {
+      } else if (chargeTrack == -p2.charge()) {
         pairSign = UnLikeSignPair;
+      } else {
+        pairSign = ReflectedPair;
       }
+
       /// Filling QA histograms of the selected tracks
       selectedTrackHisto.fillQA<IsMc, true>(p1, static_cast<aod::femtodreamparticle::MomentumType>(confTempFitVarMomentum.value), col.multNtr(), col.multV0M());
 
@@ -655,8 +662,10 @@ struct HfTaskCharmHadronsTrackFemtoDream {
         int pairSign = 0;
         if (chargeTrack == p2.charge()) {
           pairSign = LikeSignPair;
-        } else {
+        } else if (chargeTrack == -p2.charge()) {
           pairSign = UnLikeSignPair;
+        } else {
+          pairSign = ReflectedPair;
         }
 
         int charmHadMc = 0;
@@ -767,7 +776,30 @@ struct HfTaskCharmHadronsTrackFemtoDream {
                             : NegativeCharge;
 
       timeStamp = part.timeStamp();
-
+      float tpcNSigma = 999.f;
+      float tofNSigma = 999.f;
+      switch (trackSel.pdgCodeTrack1.value) {
+        case kProton:
+          tpcNSigma = part.tpcNSigmaPr();
+          tofNSigma = part.tofNSigmaPr();
+          break;
+        case kPiPlus:
+          tpcNSigma = part.tpcNSigmaPi();
+          tofNSigma = part.tofNSigmaPi();
+          break;
+        case kKPlus:
+          tpcNSigma = part.tpcNSigmaKa();
+          tofNSigma = part.tofNSigmaKa();
+          break;
+        case kDeuteron:
+          tpcNSigma = part.tpcNSigmaDe();
+          tofNSigma = part.tofNSigmaDe();
+          break;
+        default:
+          LOG(fatal) << "Unhandled PDG code in PID switch: "
+                     << trackSel.pdgCodeTrack1.value;
+          break;
+      }
       rowFemtoResultTrk(
         col.globalIndex(),
         timeStamp,
@@ -779,8 +811,8 @@ struct HfTaskCharmHadronsTrackFemtoDream {
         part.tpcNClsFound(),
         part.tpcNClsFindable(),
         part.tpcNClsCrossedRows(),
-        part.tpcNSigmaPr(),
-        part.tofNSigmaPr());
+        tpcNSigma,
+        tofNSigma);
     }
 
     // ---- Fill Collision Table ----
@@ -874,9 +906,12 @@ struct HfTaskCharmHadronsTrackFemtoDream {
       auto sliceCharmHad = partitionCharmHadron2Prong->sliceByCached(aod::femtodreamparticle::fdCollisionId, col.globalIndex(), cache);
       if (fillTableWithCharm.value && sliceCharmHad.size() == 0) {
         continue;
+      } else {
+        fillTables<false, DecayChannel::D0ToPiK>(col, sliceTrk1, sliceCharmHad);
       }
-      fillTables<false, DecayChannel::D0ToPiK>(col, sliceTrk1, sliceCharmHad);
-      doSameEvent<false, DecayChannel::D0ToPiK, FilteredCharmCand2Prongs>(sliceCharmHad, sliceTrk1, parts, col);
+      if (sliceCharmHad.size() > 0 && sliceTrk1.size() > 0) {
+        doSameEvent<false, DecayChannel::D0ToPiK, FilteredCharmCand2Prongs>(sliceCharmHad, sliceTrk1, parts, col);
+      }
     }
     if (mixSetting.doMixEvent) {
       switch (mixSetting.mixingBinPolicy) {
@@ -906,9 +941,12 @@ struct HfTaskCharmHadronsTrackFemtoDream {
       auto sliceCharmHad = partitionCharmHadronDstar->sliceByCached(aod::femtodreamparticle::fdCollisionId, col.globalIndex(), cache);
       if (fillTableWithCharm.value && sliceCharmHad.size() == 0) {
         continue;
+      } else {
+        fillTables<false, DecayChannel::DstarToD0Pi>(col, sliceTrk1, sliceCharmHad);
       }
-      fillTables<false, DecayChannel::DstarToD0Pi>(col, sliceTrk1, sliceCharmHad);
-      doSameEvent<false, DecayChannel::DstarToD0Pi, FilteredCharmCandDstars>(sliceCharmHad, sliceTrk1, parts, col);
+      if (sliceCharmHad.size() > 0 && sliceTrk1.size() > 0) {
+        doSameEvent<false, DecayChannel::DstarToD0Pi, FilteredCharmCandDstars>(sliceCharmHad, sliceTrk1, parts, col);
+      }
     }
     if (mixSetting.doMixEvent) {
       switch (mixSetting.mixingBinPolicy) {

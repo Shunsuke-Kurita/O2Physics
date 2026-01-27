@@ -9,7 +9,7 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-/// \file femtoDreamProducer.cxx
+/// \file producerCharmHadronsTrackFemtoDream.cxx
 /// \brief Tasks that produces the track tables used for the pairing
 /// \author Ravindra Singh, GSI, ravindra.singh@cern.ch
 /// \author Biao Zhang, Heidelberg University, biao.zhang@cern.ch
@@ -32,6 +32,7 @@
 #include "PWGHF/Utils/utilsBfieldCCDB.h"
 #include "PWGHF/Utils/utilsEvSelHf.h"
 
+#include "Common/Core/ZorroSummary.h"
 #include "Common/DataModel/Centrality.h"
 #include "Common/DataModel/EventSelection.h"
 #include "Common/DataModel/Multiplicity.h"
@@ -96,6 +97,12 @@ enum DecayChannel { DplusToPiKPi = 0,
                     LcToPKPi,
                     D0ToPiK,
                     DstarToD0Pi
+};
+
+enum class D0CandFlag : uint8_t {
+  D0 = 0,
+  D0Bar = 1,
+  Reflected = 2
 };
 
 struct HfProducerCharmHadronsTrackFemtoDream {
@@ -212,6 +219,7 @@ struct HfProducerCharmHadronsTrackFemtoDream {
 
   HistogramRegistry qaRegistry{"QAHistos", {}, OutputObjHandlingPolicy::AnalysisObject};
   HistogramRegistry trackRegistry{"Tracks", {}, OutputObjHandlingPolicy::AnalysisObject};
+  OutputObj<ZorroSummary> zorroSummary{"zorroSummary"};
 
   void init(InitContext&)
   {
@@ -264,7 +272,7 @@ struct HfProducerCharmHadronsTrackFemtoDream {
     ccdb->setCaching(true);
     ccdb->setLocalObjectValidityChecking();
 
-    hfEvSel.addHistograms(qaRegistry); // collision monitoring
+    hfEvSel.init(qaRegistry, &zorroSummary); // collision monitoring
 
     int64_t const now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     ccdb->setCreatedNotAfter(now);
@@ -586,10 +594,20 @@ struct HfProducerCharmHadronsTrackFemtoDream {
               bdtScoreFd);
 
           } else if constexpr (Channel == DecayChannel::D0ToPiK) {
+            int signD0 = -999;
+            if (candFlag == static_cast<int>(D0CandFlag::D0)) {
+              signD0 = +1;
+            } else if (candFlag == static_cast<int>(D0CandFlag::D0Bar)) {
+              signD0 = -1;
+            } else if (candFlag == static_cast<int>(D0CandFlag::Reflected)) {
+              signD0 = 0;
+            } else {
+              LOG(error) << "Unexpected candFlag = " << candFlag;
+            }
             rowCandCharm2Prong(
               outputCollision.lastIndex(),
               timeStamp,
-              trackPos1.sign() + trackNeg.sign(),
+              signD0,
               trackPos1.globalIndex(),
               trackNeg.globalIndex(),
               trackPos1.pt(),
@@ -730,8 +748,12 @@ struct HfProducerCharmHadronsTrackFemtoDream {
             LOGF(fatal, "Please check your Ml configuration!!");
           }
         }
-        fillTable(0, candidate.isSelD0(), outputMlD0.at(0), outputMlD0.at(1), outputMlD0.at(2));
-        fillTable(1, candidate.isSelD0bar(), outputMlD0bar.at(0), outputMlD0bar.at(1), outputMlD0bar.at(2));
+        if (candidate.isSelD0() && candidate.isSelD0bar()) {
+          fillTable(2, candidate.isSelD0(), outputMlD0.at(0), outputMlD0.at(1), outputMlD0.at(2)); // tag reflection
+        } else {
+          fillTable(0, candidate.isSelD0(), outputMlD0.at(0), outputMlD0.at(1), outputMlD0.at(2));
+          fillTable(1, candidate.isSelD0bar(), outputMlD0bar.at(0), outputMlD0bar.at(1), outputMlD0bar.at(2));
+        }
 
       } else if constexpr (Channel == DecayChannel::DstarToD0Pi) {
         if constexpr (UseCharmMl) {

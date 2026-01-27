@@ -20,6 +20,7 @@
 
 #include <CCDB/BasicCCDBManager.h>
 #include <Framework/AnalysisTask.h>
+#include <Framework/HistogramRegistry.h>
 #include <Framework/runDataProcessing.h>
 
 #include <map>
@@ -27,7 +28,7 @@
 #include <vector>
 
 struct OnTheFlyDetectorGeometryProvider {
-
+  o2::framework::HistogramRegistry histos{"Histos", {}, o2::framework::OutputObjHandlingPolicy::AnalysisObject};
   o2::framework::Configurable<std::vector<std::string>> detectorConfiguration{"detectorConfiguration",
                                                                               std::vector<std::string>{"$O2PHYSICS_ROOT/share/alice3/a3geometry_v3.ini"},
                                                                               "Paths of the detector geometry configuration files"};
@@ -36,9 +37,6 @@ struct OnTheFlyDetectorGeometryProvider {
   {
     ccdb->setURL("http://alice-ccdb.cern.ch");
     ccdb->setTimestamp(-1);
-  }
-  void run(o2::framework::ProcessingContext& pc)
-  {
     o2::fastsim::GeometryContainer geometryContainer; // Checking that the geometry files can be accessed and loaded
     LOG(info) << "On-the-fly detector geometry provider running.";
     if (detectorConfiguration.value.empty()) {
@@ -48,6 +46,7 @@ struct OnTheFlyDetectorGeometryProvider {
     int idx = 0;
     for (auto& configFile : detectorConfiguration.value) {
       LOG(info) << "Loading detector geometry from configuration file: " << configFile;
+      histos.add<TH1>(Form("GeometryConfigFile_%d", idx), configFile.c_str(), o2::framework::HistType::kTH1D, {{1, 0, 1}})->Fill(0.5);
       // If the filename starts with ccdb: then take the file from the ccdb
       if (configFile.rfind("ccdb:", 0) == 0) {
         std::string ccdbPath = configFile.substr(5); // remove "ccdb:" prefix
@@ -68,8 +67,22 @@ struct OnTheFlyDetectorGeometryProvider {
       geometryContainer.addEntry(configFile);
       idx++;
     }
-    pc.services().get<o2::framework::ControlService>().endOfStream();
-    pc.services().get<o2::framework::ControlService>().readyToQuit(o2::framework::QuitRequest::Me);
+
+    // First we check that the magnetic field is consistent
+    const int nGeometries = geometryContainer.getNumberOfConfigurations();
+    const float mMagneticField = geometryContainer.getFloatValue(0, "global", "magneticfield");
+    for (int icfg = 0; icfg < nGeometries; ++icfg) {
+      const float cfgBfield = geometryContainer.getFloatValue(icfg, "global", "magneticfield");
+      if (std::abs(cfgBfield - mMagneticField) > 1e-3) {
+        LOG(fatal) << "Inconsistent magnetic field values between configurations 0 and " << icfg << ": " << mMagneticField << " vs " << cfgBfield;
+      }
+    }
+    LOG(info) << "Initialization completed";
+  }
+
+  void process(o2::aod::McCollisions const& mcCollisions, o2::aod::McParticles const& mcParticles)
+  {
+    LOG(info) << "On-the-fly detector geometry provider processing " << mcCollisions.size() << " collisions and " << mcParticles.size() << " particles.";
   }
 };
 
