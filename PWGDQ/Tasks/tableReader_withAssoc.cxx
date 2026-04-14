@@ -2501,8 +2501,8 @@ struct AnalysisSameEventPairing {
                 }
               }
             } // end pair cut loop
-          }   // end muon cut loop
-        }     // end barrel cut loop
+          } // end muon cut loop
+        } // end barrel cut loop
       }
     }
   }
